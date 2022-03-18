@@ -1,2 +1,2 @@
 # ecl
-My public esolang work
+An esolang for generating events 
