@@ -1,0 +1,24 @@
+# Thu 19-Jul-2018 03:01 bushbo
+# ARTI build script
+
+import os
+import glob
+
+ccflags = ['-Wall', '-Werror', '-Wextra', '-pedantic', '-g', '-std=c99']
+
+env = Environment(CC='gcc', CCFLAGS=ccflags, ENV=os.environ)
+env.Append(LIBS=['SDL2', 'portmidi', 'm'])
+
+src = """
+ecl.c rng.c
+"""
+
+src = [x for x in Split(src)]
+
+env.Program(target='ecl', source=[src, 'ecl_gui.c'])
+env.Program(target='gui', source=[src, 'gui.c'])
+
+# Build test harnesses
+for test in glob.glob('*_test.c'):
+    name, ext = os.path.splitext(os.path.basename(test))
+    env.Program(target=os.path.join('bin', name), source=[src, test])
