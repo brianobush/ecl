@@ -189,21 +189,21 @@ arg_t ARGS[] = {
     */
 
     {'A', 0, 0, 1, 1}, /* accumulate values; argument is register storage */
-    // B
+    // Burst
     {'C', 0, 0, 1, 1}, /* produce a constant value on bang */
     {'D', 0, 0, 1, 1}, /* decrement value of bang by arg (def 1) on output */
-    //{'E', 1, 0, 0, 2}, /* Eucliden clock, args: pulses, steps, rotation */
-    {'F', 0, 0, 1, 1}, /* if bang value matches argument, bang true, else false */
-    {'G', 1, 0, 0, 2}, /* pure generator; one of two pure creators of bangs, arg is divisor */
+    {'E', 0, 0, 1, 3}, /* Eucliden clock, args: pulses, steps, current */
+    {'F', 0, 0, 1, 1}, /* if bang value matches argument, allow value to pass otherwise block */
+    {'G', 1, 0, 0, 2}, /* pure generator;  pure creators of bangs, args: rate, max */
     // H
     {'I', 0, 0, 1, 1}, /* increment value of bang by arg (def 1) on output */
     {'J', 0, 0, 1, 1}, /* jump bang value a specified number of cells  */
-    {'K', 0, 0, 1, 1}, /* counter, bang passes when argument is zero */
     // K
     // L   limit?
-    // M  /mod    bang with x, arg is y, output x/y and x%y
+    {'M', 0, 0, 1, 1}, /* mod; bang with x, arg is y, output x%y */
     // N
-    {'O', 0, 0, 1, 5}, /* Output to a device (midi); channel, octave, note, velocity, length */
+    {'O', 0, 0, 1, 5}, /* Output to a device (midi); channel, octave, note, velocity, length */  
+    // Add repeat to output?
     {'P', 0, 0, 1, 1}, /* continue bang probabilistically */
     {'Q', 0, 0, 1, 1}, /* query a register on bang */
     {'R', 0, 0, 1, 2}, /* randomize; no args -> binary */
@@ -212,7 +212,7 @@ arg_t ARGS[] = {
     // U
     {'V', 0, 0, 1, 2}, /* Store bang value into a named register */
     // W
-    {'X', 0, 0, 1, 2}, /* Write bang to position defined in args X, Y */
+    {'X', 0, 0, 1, 0}, /* Kill a bang */
     // Y
     // Z
     {'Z', 0, 0, 1, 1}, /* Jump unless zero to address specified  */
@@ -261,7 +261,8 @@ static void op_teleport_read(ecl_t *ecl, int x)
 
 static void do_teleport(ecl_t *ecl)
 {
-    int x, arg;
+    int x;
+    int arg;
     char v;
 
     for (x = 0; x < ecl->memsz; x++)
@@ -284,21 +285,21 @@ static void do_teleport(ecl_t *ecl)
 }
 
 /* Write bang to an address at X,Y (X*WIDTH+Y) offset from v */
-static void op_write(ecl_t *ecl, int v)
-{
-    char xarg, yarg, bang;
-    int x, y;
+// static void op_write(ecl_t *ecl, int v)
+// {
+//     char xarg, yarg, bang;
+//     int x, y;
 
-    xarg = ecl_get(ecl, v + 1);
-    yarg = ecl_get(ecl, v + 2);
-    bang = ecl_get(ecl, v - 1);
-    x = char2int((xarg == '?') ? bang : xarg);
-    y = char2int((yarg == '?') ? bang : yarg);
-    printf("x %d y %d\n", x, y);
-    v += (x * ecl->height) + y + 1;
-    ecl_set(ecl, v, bang);
-    ecl_set_state(ecl, v, STATE_NUM);
-}
+//     xarg = ecl_get(ecl, v + 1);
+//     yarg = ecl_get(ecl, v + 2);
+//     bang = ecl_get(ecl, v - 1);
+//     x = char2int((xarg == '?') ? bang : xarg);
+//     y = char2int((yarg == '?') ? bang : yarg);
+//     printf("x %d y %d\n", x, y);
+//     v += (x * ecl->height) + y + 1;
+//     ecl_set(ecl, v, bang);
+//     ecl_set_state(ecl, v, STATE_NUM);
+// }
 
 static void op_prob(ecl_t *ecl, int x)
 {
@@ -405,7 +406,9 @@ static void op_accumulate(ecl_t *ecl, int x)
 static void op_if(ecl_t *ecl, int x)
 {
     char bang = ecl_get(ecl, x - 1);
-    if (ecl_get(ecl, x + 1) == bang)
+    char arg = ecl_get(ecl, x + 1);
+    
+    if (arg == bang)
     {
         x += 2;
         ecl_set(ecl, x, bang);
@@ -460,11 +463,13 @@ static void op_rand(ecl_t *ecl, int x)
 
 static void op_euclid(ecl_t *ecl, int x)
 {
-    int pulses, steps;
+    int cur, pulses, steps;
     char bang = ecl_get(ecl, x - 1);
     char arg_pulses = ecl_get(ecl, x + 1);
     char arg_steps = ecl_get(ecl, x + 2);
-    if (bang == '.' || char2int(bang) > 0)
+    char arg_cur = ecl_get(ecl, x + 3);
+    
+    if (char2int(bang) > 0)
     {
         steps = (!is_empty(arg_steps)) ? char2int(arg_steps) : 3;
         if (steps < 1)
@@ -480,35 +485,26 @@ static void op_euclid(ecl_t *ecl, int x)
         {
             pulses = steps;
         }
+        if(is_empty(arg_cur)) {
+            cur = 1;   
+        } else {
+            cur = char2int(arg_cur) + 1;
+        }
 
-        // int m = (ecl->clock + steps - 1) % steps;
-        // if (ecl->clock % steps == 0)
-        // {
-        //     //printf("-- n %d m %d\n", n, m);
-        // } else {
-        //     printf("n %d m %d\n", n, m);
-        // }
+        int bucket = (pulses * (cur + steps - 1)) % steps + pulses;        
+        printf("bucket %d\n", bucket);
 
-        // EUCLID(m, k)
-        // if k = 0 then return m
-        // else return EUCLID(k, m mod k)
-
-        int bucket = (pulses * (ecl->clock + steps - 1)) % steps + pulses;
         if (bucket >= steps)
         {
-            ecl_set(ecl, x + 3, int2char(1));
-            ecl_set_state(ecl, x + 3, STATE_NUM);
+            ecl_set(ecl, x + 4, int2char(cur));
+            ecl_set_state(ecl, x + 4, STATE_NUM);
+            if (cur == steps) cur = 0;
         }
-    }
-
-    /* zero out any bang values if more than one */
-    if (ecl_get_state(ecl, x - 1) == STATE_NUM &&
-        ecl_get_state(ecl, x - 2) == STATE_NUM)
-    {
-        ecl_set(ecl, x - 1, '.');
-        ecl_set_state(ecl, x - 1, STATE_EMPTY);
+        ecl_set(ecl, x + 3, int2char(cur));
+        ecl_set_state(ecl, x + 3, STATE_NUM);
     }
 }
+
 
 /* Clock generator defined by rate and length */
 static void op_generate(ecl_t *ecl, int x)
@@ -549,6 +545,7 @@ static void op_generate(ecl_t *ecl, int x)
         ecl_set_state(ecl, x - 1, STATE_EMPTY);
     }
 }
+
 
 /* Sequence controller; S <length> <sequence data>. If length is zero or empty, any bang 
 is consumed with no action. Any bang on length > 0 will wrap around to a valid index value. 
@@ -699,7 +696,7 @@ static void op_dup(ecl_t *ecl, int x)
     }
 }
 
-static void op_count(ecl_t *ecl, int x)
+static void op_mod(ecl_t *ecl, int x)
 {
     char bang = ecl_get(ecl, x - 1);
     char arg = ecl_get(ecl, x + 1);
@@ -707,19 +704,10 @@ static void op_count(ecl_t *ecl, int x)
 
     if (!is_empty(arg))
     {
-        v = char2int(arg) - 1;
-        if (v >= 0)
-        {
-            x += 1;
-            ecl_set(ecl, x, int2char(v));
-            ecl_set_state(ecl, x, STATE_ARG); // actually unnecessary
-            if (v == 0)
-            {
-                x += 1;
-                ecl_set(ecl, x, bang);
-                ecl_set_state(ecl, x, STATE_NUM);
-            }
-        }
+        v = char2int(bang) % char2int(arg);
+        /* TODO: bounds check values */
+        ecl_set(ecl, x+2, int2char(v));
+        ecl_set_state(ecl, x+2, STATE_NUM);
     }
 }
 
@@ -783,8 +771,8 @@ static void call_cmd(ecl_t *ecl, int x)
     case 'J':
         op_jump(ecl, x);
         break;
-    case 'K':
-        op_count(ecl, x);
+    case 'M':
+        op_mod(ecl, x);
         break;
     case 'S':
         op_seq(ecl, x);
@@ -808,7 +796,7 @@ static void call_cmd(ecl_t *ecl, int x)
         op_query(ecl, x);
         break;
     case 'X':
-        op_write(ecl, x);
+        //op_write(ecl, x);
         break;
     case '>':
         op_right(ecl, x);
@@ -828,7 +816,8 @@ static void call_cmd(ecl_t *ecl, int x)
 /* Evaluate a memory once; no possible error state to return */
 void ecl_eval(ecl_t *ecl)
 {
-    int x, y, args; /* arguments expected */
+    int x;
+    int y, args; /* arguments expected */
     char v;
     arg_t *arg;
 
